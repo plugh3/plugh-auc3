@@ -98,6 +98,27 @@ function private.SetPrevNext(frame, prevFrame, nextFrame)
 	frame:SetScript("OnEnterPressed", private.ShiftFocus)
 end
 
+function private.GetItemName(link)
+	-- TODO: strip "|c" color field
+	--printable = gsub(link, "\124", "\124\124")
+	--aucPrint("DEBUG: GetItemName("..printable..")")
+
+	local name = "Arcane Crystal Amplifier" -- DEFAULT
+	if link:match("|Hitem:") then
+		--local itemName, _, itemRarity, _, itemMinLevel, itemType, itemSubType = GetItemInfo(link)
+		name = select(1, GetItemInfo(link))
+	elseif link:match("|Hbattlepet:") then
+		--local lType, speciesID, _, petQuality = strsplit(":", link)
+		--local petName, _, petType = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+		local speciesID = select(2, strsplit(":", link))
+		speciesID = tonumber(speciesID)
+		if speciesID then name = select(1, C_PetJournal.GetPetInfoBySpeciesID(speciesID)) end
+	else
+		aucPrint("Unknown link type")
+	end
+	return name
+end
+
 function private.GetKey(link)
 	-- for items this matches itemId, suffix and factor
 	-- for pets this matches speciesId, level and quality
@@ -357,6 +378,9 @@ function private.UpdateDisplay()
 	end
 end
 
+-- PLG notes
+-- "image" = array of "result"s
+-- "result" = struct of seller+count+minbid+curbid+buyout+tleft+link
 function private.UpdateCompetition(image)
 	local data = {}
 	local style = {}
@@ -375,9 +399,11 @@ function private.UpdateCompetition(image)
 				result[Const.SELLER],
 				tLeft,
 				count,
-				floor(0.5+result[Const.MINBID]/count),
-				floor(0.5+result[Const.CURBID]/count),
+				-- PLG: reorder columns to buy/ea, cur/ea, min/ea
+				-- NOTE: column order needs to sync with ScrollSheet:Create() call
 				floor(0.5+result[Const.BUYOUT]/count),
+				floor(0.5+result[Const.CURBID]/count),
+				floor(0.5+result[Const.MINBID]/count),
 				result[Const.MINBID],
 				result[Const.CURBID],
 				result[Const.BUYOUT],
@@ -459,22 +485,39 @@ function private.UpdatePricing()
 				local fixed = get("util.simpleauc.undercut.fixed")
 				local percent = get("util.simpleauc.undercut.percent")
 				local pct = tonumber(percent)/100
+
+				-- PLG: new undercut heuristics
 				if model == "fixed" then
 					underBuy = fixed
 					underBid = fixed
 					by = "fixed amount: "..coins(fixed)
-				else
+				elseif model == "lesser" then			
+					underBuy = (fixed < lowBuy*pct) and fixed or (lowBuy*pct)
+					by = "lesser of fixed ("..coins(fixed)..") and "..(100*pct).." percent ("..coins(lowBuy*pct)..")"
+				elseif model == "greater" then			
+					underBuy = (fixed > lowBuy*pct) and fixed or (lowBuy*pct)
+					by = "greater of fixed ("..coins(fixed)..") and "..(100*pct).." percent ("..coins(lowBuy*pct)..")"
+				else --model == "percent"
 					underBuy = lowBuy*pct
 					underBid = (lowBid or 0)*pct
 					by = percent.."% ("..coins(underBuy)..")"
 				end
 
+				-- DEBUG
+				--aucPrint("undercut: "..by.." = "..coins(underBuy)) -- DEBUG
+				--aucPrint("   lowest price = "..coins(lowBuy)..", lowest bid = "..coins(lowBid)) -- DEBUG
+				
+				--set buyout price
 				buy = lowBuy - underBuy
+				
+				-- set bid price
+				underBid = 1 -- PLG: OVERRIDE to be one rounding modulus below lowest bid
 				if lowBid and lowBid > 0 and lowBid <= lowBuy then
 					bid = lowBid - underBid
 				else
 					bid = buy * 0.8
 				end
+				bid = buy -- PLG: OVERRIDE to match buyout price
 				reason = "Undercutting market by "..by
 			end
 		--then matching current
@@ -521,8 +564,16 @@ function private.UpdatePricing()
 		bid = buy * 0.8
 	end
 	--multiply by stacksize
-	bid = bid * stack
 	buy = buy * stack
+	bid = bid * stack
+	
+	-- PLG: round price down
+	local round = get("util.simpleauc.undercut.round")
+	if round == 0 then round = 1 end -- just in case
+	buy = buy - (buy % round)
+	bid = bid - (bid % round)
+	bid = (bid > buy) and buy or bid
+
 	--We give up
 	if bid == 0 then
 		bid = 1
@@ -1064,7 +1115,7 @@ function private.CreateFrames()
 	frame.stacks.label:SetText("Stacks: (number x size)");
 
 	frame.stacks.num = CreateFrame("EditBox", "AucAdvSimpFrameStackNum", frame.stacks, "InputBoxTemplate")
-	frame.stacks.num:SetPoint("TOPLEFT", frame.stacks, "TOPLEFT", 5, 0)
+	frame.stacks.num:SetPoint("TOPLEFT", frame.stacks, "TOPLEFT", 5, -5)
 	frame.stacks.num:SetAutoFocus(false)
 	frame.stacks.num:SetHeight(18)
 	frame.stacks.num:SetWidth(40)
@@ -1072,7 +1123,7 @@ function private.CreateFrames()
 	frame.stacks.num:SetScript("OnTextChanged", function() frame.CurItem.valuechanged = true end)
 
 	frame.stacks.mult = frame.duration:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	frame.stacks.mult:SetPoint("BOTTOMLEFT", frame.stacks.num, "BOTTOMRIGHT", 5, 0)
+	frame.stacks.mult:SetPoint("BOTTOMLEFT", frame.stacks.num, "BOTTOMRIGHT", 5, 2)
 	frame.stacks.mult:SetText("x")
 
 	frame.stacks.size = CreateFrame("EditBox", "AucAdvSimpFrameStackSize", frame.stacks, "InputBoxTemplate")
@@ -1084,12 +1135,26 @@ function private.CreateFrames()
 	frame.stacks.size:SetScript("OnTextChanged", function() frame.CurItem.valuechanged = true end)
 
 	frame.stacks.equals = frame.duration:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	frame.stacks.equals:SetPoint("BOTTOMLEFT", frame.stacks.size, "BOTTOMRIGHT", 5, 0)
+	frame.stacks.equals:SetPoint("BOTTOMLEFT", frame.stacks.size, "BOTTOMRIGHT", 5, 2)
 	frame.stacks.equals:SetText("= 0")
 
+	--PLG: add "Nx1" button
+	frame.stacks.timesone = CreateFrame("Button", "AucAdvSimpFrameRemember", frame.stacks, "OptionsButtonTemplate")
+	frame.stacks.timesone:SetPoint("BOTTOMLEFT", frame.stacks.equals, "BOTTOMRIGHT", 5, -3)
+	frame.stacks.timesone:SetWidth(36)
+	frame.stacks.timesone:SetText("Nx1")
+	frame.stacks.timesone:SetScript("OnClick", 
+		function() 
+			local n = frame.stacks.size:GetNumber()
+			if n ~= 0 then
+				frame.stacks.num:SetNumber(n)
+				frame.stacks.size:SetNumber(1)
+			end
+		end)
+	
 	frame.fees = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	frame.fees:SetPoint("TOP", frame.stacks, "BOTTOM", 10, -2)
-	frame.fees:SetWidth(150)
+	frame.fees:SetPoint("TOPLEFT", frame.stacks, "BOTTOMLEFT", 0, -6)
+	frame.fees:SetWidth(160)
 	frame.fees:SetJustifyV("TOP")
 	frame.fees:SetJustifyH("CENTER")
 	frame.fees:SetText("")
@@ -1158,7 +1223,6 @@ function private.CreateFrames()
 				private.LoadItemLink(link, size)
 				--see if double clicking to auto post is allowed
 				if (not get("util.simpleauc.clickhook.doubleclick")) then return end
-
 				if not private.clickdata then private.clickdata = {} end
 				local last = private.clickdata
 				local now = GetTime()
@@ -1170,10 +1234,30 @@ function private.CreateFrames()
 					end
 					private.CheckUpdate()
 					private.PostAuction()
+				else -- single-click -> re-verify competitive listings
+					--PLG: re-verify competitive listings
+					-- if 2 consecutive single-clicks, ignore 2nd (probably first half of double-click)
+					if not (last[1] == bag and last[2] == slot and now - last[3] > 1.0) then
+						local itemName = private.GetItemName(link)
+						aucPrint("Rescanning "..link)
+						AuctionFrameBrowse_Reset(BrowseResetButton)
+						AuctionFrameBrowse.page = 0
+						BrowseName:SetText(itemName)
+						AuctionFrameBrowse_Search()
+					end
 				end
 				last[1] = bag
 				last[2] = slot
 				last[3] = now
+			-- PLG: Alt-RightClick jumps to listing search (same as when Browse tab open)
+			elseif (button == "RightButton") and (IsAltKeyDown()) then
+				local itemName = private.GetItemName(link)
+				aucPrint("Scanning \""..itemName.."\"")
+				AuctionFrameBrowse_Reset(BrowseResetButton)
+				AuctionFrameBrowse.page = 0
+				BrowseName:SetText(itemName)
+				_G["AuctionFrameTab1"]:Click()
+				AuctionFrameBrowse_Search()
 			end
 		end
 	end
@@ -1285,14 +1369,16 @@ function private.CreateFrames()
 		private.onSelect()
 	end
 
-
+	--PLG: rows
 	frame.imageview.sheet = ScrollSheet:Create(frame.imageview, {
 		{ "Seller", "TEXT", get("util.simpleauc.columnwidth.Seller")}, --89
 		{ "Left",   "INT",  get("util.simpleauc.columnwidth.Left")}, --32
 		{ "Stk",    "INT",  get("util.simpleauc.columnwidth.Stk")}, --32
-		{ "Min/ea", "COIN", get("util.simpleauc.columnwidth.Min/ea"), { DESCENDING=true } }, --65
+		-- PLG: reorder columns to buy/ea, cur/ea, min/ea
+		-- NOTE: column order needs to sync with private.UpdateCompetition()
+		{ "Buy/ea", "COIN", get("util.simpleauc.columnwidth.Buy/ea"), { DESCENDING=false, DEFAULT=true } }, --65
 		{ "Cur/ea", "COIN", get("util.simpleauc.columnwidth.Cur/ea"), { DESCENDING=true } }, --65
-		{ "Buy/ea", "COIN", get("util.simpleauc.columnwidth.Buy/ea"), { DESCENDING=true, DEFAULT=true } }, --65
+		{ "Min/ea", "COIN", get("util.simpleauc.columnwidth.Min/ea"), { DESCENDING=true } }, --65
 		{ "MinBid", "COIN", get("util.simpleauc.columnwidth.MinBid"), { DESCENDING=true } }, --76
 		{ "CurBid", "COIN", get("util.simpleauc.columnwidth.CurBid"), { DESCENDING=true } }, --76
 		{ "Buyout", "COIN", get("util.simpleauc.columnwidth.Buyout"), { DESCENDING=true } }, --80

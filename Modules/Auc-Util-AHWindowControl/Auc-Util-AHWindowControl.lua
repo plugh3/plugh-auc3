@@ -184,6 +184,7 @@ end
 local runonce=true
 function private.setupWindowFunctions()
 	private.recallLastPos()
+	_G["AuctionFrameTab6"]:Click()
 	if runonce then
 		private.AdjustProtection()
 		runonce=nil
