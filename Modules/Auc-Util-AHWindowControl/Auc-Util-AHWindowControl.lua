@@ -68,6 +68,9 @@ lib.Processors = {
 		end
 		-- restore position on every open, in case UIParent (or another AddOn) has moved it since
 		private.RestorePosition()
+		-- open to Post tab
+		-- TODO: make a user setting for "Default Tab"
+		_G["AuctionFrameTab6"]:Click()
 	end,
 
 	configchanged = function(callbackType, fullsetting, value, settingname, settinggroup, settingbase)
@@ -210,18 +213,6 @@ end
 
 
 --[[ Window Control Functions ]]--
-
---Hooks AH show function. This is fired after all Auction Frame methods have been set by Blizzard
---We can now override with our settings
-local runonce=true
-function private.setupWindowFunctions()
-	private.recallLastPos()
-	_G["AuctionFrameTab6"]:Click()
-	if runonce then
-		private.AdjustProtection()
-		runonce=nil
-	end
-end
 
 -- MoveFrame: Enable or disable the move scripts, apply scale settings
 local function OnMouseDown(frame)
