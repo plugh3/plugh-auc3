@@ -165,6 +165,7 @@ function lib.ProcessTooltip(tooltip, link, serverKey, quantity, decoded, additio
 	end
 end
 
+-- restore Sound_EnableSFX state after toggle
 SLASH_AUCTIONEERMOD1 = '/sfxtoggle';
 lib.Processors.sfxState = '0';
 SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
@@ -180,18 +181,6 @@ SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
 		print('restore ' .. lib.Processors.sfxState);
 		SetCVar(cvar, lib.Processors.sfxState);
 	end
---[[
-	if (GetCVar(cvar) == '1') then
-		sfxWasEnabled = true;
-		SetCVar(cvar, '0');
-	else
-		if (sfxWasEnabled) then
-			SetCVar(cvar, '1');
-			sfxWasEnabled = false;
-		end
-	end
-]]
---SetCVar('Sound_EnableSFX', '1');
 end
 
 
