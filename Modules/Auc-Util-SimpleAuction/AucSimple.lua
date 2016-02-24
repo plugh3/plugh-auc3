@@ -165,6 +165,36 @@ function lib.ProcessTooltip(tooltip, link, serverKey, quantity, decoded, additio
 	end
 end
 
+SLASH_AUCTIONEERMOD1 = '/sfxtoggle';
+lib.Processors.sfxState = '0';
+SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
+	cvar = 'Sound_EnableSFX';
+	if (msg == 'off') then
+		print('save ' .. GetCVar(cvar));
+		local state = GetCVar(cvar);
+		if (state == '1') then
+			SetCVar(cvar, '0');			
+		end
+		lib.Processors.sfxState = state;
+	elseif (msg == 'restore') then
+		print('restore ' .. lib.Processors.sfxState);
+		SetCVar(cvar, lib.Processors.sfxState);
+	end
+--[[
+	if (GetCVar(cvar) == '1') then
+		sfxWasEnabled = true;
+		SetCVar(cvar, '0');
+	else
+		if (sfxWasEnabled) then
+			SetCVar(cvar, '1');
+			sfxWasEnabled = false;
+		end
+	end
+]]
+--SetCVar('Sound_EnableSFX', '1');
+end
+
+
 function lib.OnLoad()
 	--Default sizes for the scrollframe column widths
 	default("util.simpleauc.columnwidth.Seller", 89)
