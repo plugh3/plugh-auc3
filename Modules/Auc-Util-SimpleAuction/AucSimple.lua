@@ -166,6 +166,14 @@ function lib.ProcessTooltip(tooltip, link, serverKey, quantity, decoded, additio
 end
 
 -- restore Sound_EnableSFX state after toggle
+--[[
+	usage (in-game macro):
+		/sfxtoggle off
+		/run SlashCmdList["UI_ERRORS_OFF"]();
+		[do stuff]
+		/run SlashCmdList["UI_ERRORS_ON"]();
+		/sfxtoggle restore
+--]]
 SLASH_AUCTIONEERMOD1 = '/sfxtoggle';
 lib.Processors.sfxState = '0';
 SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
