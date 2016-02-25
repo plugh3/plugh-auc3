@@ -570,6 +570,10 @@ function private.UpdatePricing()
 	-- PLG: round price down
 	local round = get("util.simpleauc.undercut.round")
 	if round == 0 then round = 1 end -- just in case
+	-- above 2000g, round by 100g
+	if (buy >= 20000000) then 
+		if (round < 1000000) then round = 1000000 end
+	end
 	buy = buy - (buy % round)
 	bid = bid - (bid % round)
 	bid = (bid > buy) and buy or bid
