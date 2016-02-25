@@ -217,28 +217,33 @@ function private.BrowseButton_OnClick(...)
         	if(arg1 == "RightButton") then -- only warn of modifier key if the right mouse button is set
 				private.EBMessage("|cffff5511EasyBuyout - Modifier Key " .. private.EBConvertModifierToText(selection) .. " is set, but not pressed!");
 
-				-- PLG: on malformed EasyBuyout (missing modifier key), show info about listing
-				local button = self
-				local id
-				if CompactUImode then
-					id = button.id
-				else
-					id = button:GetID() + FauxScrollFrame_GetOffset(BrowseScrollFrame)
-				end
-				local link = GetAuctionItemLink("list", id)
-				if link then
+				-- PLG: on Right-Click of Browse tab listing -> switch to Auctions tab
+				_G["AuctionFrameTab3"]:Click()
+
+				
+				--EXAMPLE: extract info about clicked listing (e.g. seller name)
+
+				--local button = self
+				--local id
+				--if CompactUImode then
+				--	id = button.id
+				--else
+				--	id = button:GetID() + FauxScrollFrame_GetOffset(BrowseScrollFrame)
+				--end
+				--local link = GetAuctionItemLink("list", id)
+				--if link then
 					--PLG: copy seller's name to item textfield
-					local seller = select(14, GetAuctionItemInfo("list", id))
-					local sellerFull = select(15, GetAuctionItemInfo("list", id))
-					local name = sellerFull or seller
-					local msg = "Copying seller name "..name.." to \"Name\" textbox"
-					if not sellerFull then msg = msg.." (no full name -- other realm)" end
-					private.EBMessage(msg)
-					BrowseName:SetText(name)
+					--local seller = select(14, GetAuctionItemInfo("list", id))
+					--local sellerFull = select(15, GetAuctionItemInfo("list", id))
+					--local name = sellerFull or seller
+					--local msg = "Copying seller name "..name.." to \"Name\" textbox"
+					--if not sellerFull then msg = msg.." (no full name -- other realm)" end
+					--private.EBMessage(msg)
+					--BrowseName:SetText(name)
 					--if seller then private.EBMessage("|cffCC1100seller: "..seller) end
 					--if sellerFull then private.EBMessage("|cffCC1100sellerFull: "..sellerFull)
 					--else private.EBMessage("|cffCC1100sellerFull: no full name! (other realm)") end
-				end
+				--end
 				
 			end
 
