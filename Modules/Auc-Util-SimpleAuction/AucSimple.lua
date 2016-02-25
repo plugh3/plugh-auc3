@@ -179,14 +179,14 @@ lib.Processors.sfxState = '0';
 SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
 	cvar = 'Sound_EnableSFX';
 	if (msg == 'off') then
-		print('save ' .. GetCVar(cvar));
+		--print('save ' .. GetCVar(cvar));
 		local state = GetCVar(cvar);
 		if (state == '1') then
 			SetCVar(cvar, '0');			
 		end
 		lib.Processors.sfxState = state;
 	elseif (msg == 'restore') then
-		print('restore ' .. lib.Processors.sfxState);
+		--print('restore ' .. lib.Processors.sfxState);
 		SetCVar(cvar, lib.Processors.sfxState);
 	end
 end
