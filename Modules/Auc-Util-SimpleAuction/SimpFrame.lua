@@ -567,11 +567,19 @@ function private.UpdatePricing()
 	buy = buy * stack
 	bid = bid * stack
 	
+	
 	-- PLG: round price down
 	local round = get("util.simpleauc.undercut.round")
 	if round == 0 then round = 1 end -- just in case
-	-- above 2000g, round by 100g
-	if (buy >= 20000000) then 
+	-- if price above 2000g, round by 100g (except blacklist)
+	local doNotRoundBy100g = {
+		["Truesteel Essence"] = true,
+		["Steelforged Essence"] = true,
+		["Medallion of the Legion"] = true,
+		["True Iron Trigger"] = true
+	}
+	local itemName = private.GetItemName(link)
+	if (buy >= 20000000 and not doNotRoundBy100g[itemName]) then 
 		if (round < 1000000) then round = 1000000 end
 	end
 	buy = buy - (buy % round)
