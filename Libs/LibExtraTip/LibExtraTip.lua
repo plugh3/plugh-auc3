@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 local LIBNAME = "LibExtraTip"
 local VERSION_MAJOR = 1
-local VERSION_MINOR = 334
+local VERSION_MINOR = 340
 -- Minor Version cannot be a SVN Revison in case this library is used in multiple repositories
 -- Should be updated manually with each (non-trivial) change
 
@@ -37,7 +37,7 @@ local LIBSTRING = LIBNAME.."_"..VERSION_MAJOR.."_"..VERSION_MINOR
 local lib = LibStub:NewLibrary(LIBNAME.."-"..VERSION_MAJOR, VERSION_MINOR)
 if not lib then return end
 
-LibStub("LibRevision"):Set("$URL: http://svn.norganna.org/libs/trunk/LibExtraTip/LibExtraTip.lua $","$Rev: 395 $","5.15.DEV.", 'auctioneer', 'libs')
+LibStub("LibRevision"):Set("$URL: http://svn.norganna.org/libs/trunk/LibExtraTip/LibExtraTip.lua $","$Rev: 416 $","5.15.DEV.", 'auctioneer', 'libs')
 
 -- Call function to deactivate any outdated version of the library.
 -- (calls the OLD version of this function, NOT the one defined in this
@@ -72,7 +72,8 @@ local defaultEnable = {
 	SetSendMailItem = true,
 	SetTradePlayerItem = true,
 	SetTradeTargetItem = true,
-	SetTradeSkillItem = true,
+	SetRecipeReagentItem = true,
+	SetRecipeResultItem = true,
 	SetHyperlink = true,
 	SetHyperlinkAndCount = true, -- Creating a tooltip via lib:SetHyperlinkAndCount()
 	SetBattlePet = true,
@@ -87,7 +88,7 @@ local alwaysEnable = {
 
 -- Money Icon setup
 local iconpath = "Interface\\MoneyFrame\\UI-"
-local goldicon = "%d|T"..iconpath.."GoldIcon:0|t"
+local goldicon = "%.0f|T"..iconpath.."GoldIcon:0|t"
 local silvericon = "%s|T"..iconpath.."SilverIcon:0|t"
 local coppericon = "%s|T"..iconpath.."CopperIcon:0|t"
 
@@ -133,8 +134,10 @@ local function OnTooltipSetItem(tooltip)
 		elseif testname == "" then
 			-- Blizzard broke tooltip:GetItem() in 6.2. Detect and fix the bug if possible. Remove workaround when fixed by Blizzard. [LTT-56]
 			-- thanks to sapu for identifying bug and suggesting workaround
-			local checkItemID = strmatch(item, ":(%d+):") -- this match string should find the itemID in any link
-			if not checkItemID or checkItemID == "0" then -- it's usually "0"
+			-- Broken differently in 7.0 because 0 is not printed in itemstrings, and it would find the player level as the first number [LTT-59]
+			local checkItemID = strmatch(item, "item:(%d*):") -- this match string should find the itemID in any link
+			--DebugPrintQuick("failed name check ", checkItemID, testname, item, item:gsub(".*item:", ""), reg.item, reg.additional.link )
+			if not checkItemID or checkItemID == "" then -- it's usually "" for recipes
 				item = reg.item or reg.additional.link -- try to find a valid link from another source (or set to nil if we can't find one)
 			end
 		end
@@ -245,7 +248,6 @@ local function OnTooltipCleared(tooltip)
 	tooltip:SetFrameLevel(1)
 
 	reg.extraTipUsed = nil
-	reg.minWidth = 0
 	reg.quantity = nil
 	reg.hasItem = nil
 	reg.item = nil
@@ -254,7 +256,9 @@ local function OnTooltipCleared(tooltip)
 		tinsert(self.extraTippool, reg.extraTip)
 		reg.extraTip:Hide()
 		reg.extraTip:Release()
+		reg.extraTip:ClearLines()
 		reg.extraTip:SetHeight(0)
+		reg.extraTip:SetWidth(0)
 		ProcessCallbacks(reg, "extrahide", tooltip, reg.extraTip)
 		reg.extraTip = nil
 	end
@@ -333,13 +337,22 @@ end
 
 -- Function that gets run when a registered tooltip's size changes.
 local function OnSizeChanged(tooltip,w,h)
-	local self = lib
-	local reg = self.tooltipRegistry[tooltip]
+	local reg = lib.tooltipRegistry[tooltip]
 	if not reg then return end
 
 	local extraTip = reg.extraTip
 	if extraTip then
-		extraTip:NeedsRefresh(true)
+		extraTip:MatchSize()
+	end
+end
+
+local function ShowCalled(tooltip)
+	local reg = lib.tooltipRegistry[tooltip]
+	if not reg then return end
+
+	local extraTip = reg.extraTip
+	if extraTip then
+		extraTip:MatchSize()
 	end
 end
 
@@ -465,7 +478,6 @@ local function hookglobal(func, posthook)
 	end
 	local stub = function(...)
 		local hook
-		-- prehook
 		hook = control[1]
 		if hook then hook(...) end
 	end
@@ -518,6 +530,7 @@ function lib:RegisterTooltip(tooltip)
 			hookscript(tooltip,"OnTooltipSetSpell",OnTooltipSetSpell)
 			hookscript(tooltip,"OnTooltipCleared",OnTooltipCleared)
 			hookscript(tooltip,"OnSizeChanged",OnSizeChanged)
+			hook(tooltip, "Show", nil, ShowCalled) -- posthook
 
 			for k,v in pairs(tooltipMethodPrehooks) do
 				hook(tooltip,k,v)
@@ -720,9 +733,9 @@ end
 	@since 1.0
 ]]
 function lib:GetMoneyText(money, concise)
-	local g = math.floor(money / 10000)
-	local s = math.floor(money % 10000 / 100)
-	local c = math.floor(money % 100)
+	local g = floor(money / 10000)
+	local s = floor(money % 10000 / 100)
+	local c = floor(money % 100)
 
 	local moneyText = ""
 
@@ -1071,15 +1084,18 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 			end
 		end,
 
-		SetInboxItem = function(self,index)
+		SetInboxItem = function(self, index, itemIndex)
 			OnTooltipCleared(self)
 			local reg = tooltipRegistry[self]
 			reg.ignoreOnCleared = true
-			local _,_,q,_,cu = GetInboxItem(index)
-			reg.quantity = q
 			reg.additional.event = "SetInboxItem"
 			reg.additional.eventIndex = index
-			reg.additional.canUse = cu
+			reg.additional.eventSubIndex = itemIndex -- may be nil
+			if itemIndex then
+				local _,_,_,q,_,cu = GetInboxItem(index, itemIndex)
+				reg.quantity = q
+				reg.additional.canUse = cu
+			end
 		end,
 
 		SetInventoryItem = function(self, unit, index)
@@ -1192,26 +1208,32 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 			reg.additional.eventIndex = index
 		end,
 
-		SetTradeSkillItem = function(self,index,reagentIndex)
+		SetRecipeReagentItem = function(self, recipeID, reagentIndex)
 			OnTooltipCleared(self)
 			local reg = tooltipRegistry[self]
 			reg.ignoreOnCleared = true
-			reg.additional.event = "SetTradeSkillItem"
-			reg.additional.eventIndex = index
-			reg.additional.eventReagentIndex = reagentIndex
-			if reagentIndex then
-				local _,_,q,rc = GetTradeSkillReagentInfo(index,reagentIndex)
-				reg.quantity = q
-				reg.additional.playerReagentCount = rc
-				reg.additional.link = GetTradeSkillReagentItemLink(index,reagentIndex) -- Workaround [LTT-56], Remove when fixed by Blizzard
-			else
-				local link = GetTradeSkillItemLink(index)
-				reg.additional.link = link
-				reg.quantity = GetTradeSkillNumMade(index)
-				if link and link:match("spell:%d") then
-					SetSpellDetail(reg, link)
-				end
-			end
+			reg.additional.event = "SetRecipeReagentItem"
+			reg.additional.eventIndex = recipeID
+			reg.additional.eventSubIndex = reagentIndex
+			local _,_,q,rc = C_TradeSkillUI.GetRecipeReagentInfo(recipeID, reagentIndex)
+			reg.quantity = q
+			reg.additional.playerReagentCount = rc
+			reg.additional.link = C_TradeSkillUI.GetRecipeReagentItemLink(recipeID, reagentIndex) -- Workaround [LTT-56], Remove when fixed by Blizzard
+		end,
+
+		SetRecipeResultItem = function(self, recipeID)
+			OnTooltipCleared(self)
+			local reg = tooltipRegistry[self]
+			reg.ignoreOnCleared = true
+			reg.additional.event = "SetRecipeResultItem"
+			reg.additional.eventIndex = recipeID
+			local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID) -- returns a table with a ton of info
+			reg.additional.recipeInfo = recipeInfo -- for now just attach whole table to reg.additional
+			local minMade, maxMade = C_TradeSkillUI.GetRecipeNumItemsProduced(recipeID)
+			reg.additional.minMade = minMade
+			reg.additional.maxMade = maxMade
+			reg.quantity = (minMade + maxMade) / 2 -- ### todo: may not be an integer, if this causes problems may need to math.floor it
+			reg.additional.link = C_TradeSkillUI.GetRecipeItemLink(recipeID) -- Workaround [LTT-56], Remove when fixed by Blizzard
 		end,
 
 		SetHyperlink = function(self,link)
@@ -1315,6 +1337,7 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 			reg.additional.eventIndex = index
 		end,
 
+		--[[ may also be causing taint? disabled just in case - we don't use it for anything
 		SetUnit = function(self, unit)
 			OnTooltipCleared(self)
 			local reg = tooltipRegistry[self]
@@ -1322,6 +1345,7 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 			reg.additional.event = "SetUnit"
 			reg.additional.eventUnit= unit
 		end,
+		--]]
 
 		--[[ disabled due to taint issues
 		SetUnitAura = function(self, unit, index, filter)
@@ -1375,7 +1399,8 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 		SetSendMailItem = posthookClearIgnore,
 		SetTradePlayerItem = posthookClearIgnore,
 		SetTradeTargetItem = posthookClearIgnore,
-		SetTradeSkillItem = posthookClearIgnore,
+		SetRecipeReagentItem = posthookClearIgnore,
+		SetRecipeResultItem = posthookClearIgnore,
 
 		SetHyperlink = function(self)
 			local reg = tooltipRegistry[self]
@@ -1393,7 +1418,7 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 		SetSpellBookItem = posthookClearIgnore,
 		SetTalent = posthookClearIgnore,
 		SetTrainerService = posthookClearIgnore,
-		SetUnit = posthookClearIgnore,
+		--SetUnit = posthookClearIgnore,
 		--SetUnitAura = posthookClearIgnore,
 		SetUnitBuff = posthookClearIgnore,
 		SetUnitDebuff = posthookClearIgnore,
@@ -1402,7 +1427,7 @@ function lib:GenerateTooltipMethodTable() -- Sets up hooks to give the quantity 
 end
 
 do -- ExtraTip "class" definition
-	local methods = {"InitLines","Attach","Show","MatchSize","Release","NeedsRefresh","SetParentClamp"}
+	local methods = {"InitLines","Attach","Show","MatchSize","Release","SetParentClamp"}
 	local scripts = {"OnShow","OnHide","OnSizeChanged"}
 	local numTips = 0
 	local class = {}
@@ -1437,19 +1462,34 @@ do -- ExtraTip "class" definition
 		return o
 	end
 
+	local pointsRight = {"TOPRIGHT", "BOTTOMRIGHT"}
+	local pointsCentre = {"TOP", "BOTTOM"}
+	local pointsLeft = {"TOPLEFT", "BOTTOMLEFT"}
+	local attachPointsLookup = {
+		TOPLEFT = pointsLeft,
+		TOPRIGHT = pointsRight,
+		BOTTOMLEFT = pointsLeft,
+		BOTTOMRIGHT = pointsRight,
+		TOP = pointsCentre,
+		BOTTOM = pointsCentre,
+		LEFT = pointsLeft,
+		RIGHT = pointsRight,
+		CENTER = pointsCentre,
+	}
 	function class:Attach(tooltip)
 		if self.parent then self:SetParentClamp(0) end
 		self.parent = tooltip
 		self:SetParent(tooltip)
 		self:SetOwner(tooltip,"ANCHOR_NONE")
-		self:SetPoint("TOP",tooltip,"BOTTOM")
+		local parentPoint = tooltip:GetPoint(1)
+		local attach = attachPointsLookup[parentPoint] or pointsRight
+		self:SetPoint(attach[1], tooltip, attach[2])
 	end
 
 	function class:Release()
 		if self.parent then self:SetParentClamp(0) end
 		self.parent = nil
 		self:SetParent(nil)
-		self.minWidth = 0
 	end
 
 	function class:InitLines()
@@ -1480,33 +1520,21 @@ do -- ExtraTip "class" definition
 		end
 	end
 
-	local function refresh(self)
-		self:NeedsRefresh(false)
-		self:MatchSize()
-	end
-
-	function class:NeedsRefresh(flag)
-		if flag then
-			self:SetScript("OnUpdate",refresh)
-		else
-			self:SetScript("OnUpdate",nil)
-		end
-	end
-
 	function class:SetParentClamp(h)
 		local p = self.parent
 		if not p then return end
 		local l,r,t,b = p:GetClampRectInsets()
 		p:SetClampRectInsets(l,r,t,-h)
-		self:NeedsRefresh(true)
 	end
 
 	function class:OnShow()
 		self:SetParentClamp(self:GetHeight())
+		self:MatchSize()
 	end
 
 	function class:OnSizeChanged(w,h)
 		self:SetParentClamp(h)
+		self:MatchSize()
 	end
 
 	function class:OnHide()
@@ -1515,45 +1543,51 @@ do -- ExtraTip "class" definition
 
 	-- The right-side text is statically positioned to the right of the left-side text.
 	-- As a result, manually changing the width of the tooltip causes the right-side text to not be in the right place.
-	local function fixRight(tooltip, shift)
-		local rights, rightname
-		rights = tooltip.Right
-		if not rights then
-			rightname = tooltip:GetName().."TextRight"
+	local function fixRight(tooltip, width)
+		local lefts = tooltip.Left or tooltip.LibExtraTipLeft
+		if not lefts then
+			lefts = setmetatable({name = tooltip:GetName().."TextLeft"},line_mt)
+			tooltip.LibExtraTipLeft = lefts -- use key containing lib name, to try to ensure it doesn't clash with anything
 		end
+		local rights = tooltip.Right or tooltip.LibExtraTipRight
+		if not rights then
+			rights = setmetatable({name = tooltip:GetName().."TextRight"},line_mt)
+			tooltip.LibExtraTipRight = rights -- use key containing lib name, to try to ensure it doesn't clash with anything
+		end
+
+		local padding = 0
+		if tooltip:GetPadding() > 0 then
+			-- hack because GetPadding does not return the actual value set by SetPadding
+			-- however GetPadding does return a non-zero value if SetPadding was set to a non-zero value, so we can use it to fake something useable
+			-- for ItemRefTooltip, and other tooltips based on it, padding is usually 16
+			padding = 16
+		end
+		local xofs = width - padding - 20.5 -- constant value obtained by analysing default tooltip layout
+
 		for line = 1, tooltip:NumLines() do
-			local right
-			if rights then
-				right = rights[line]
-			else
-				right = _G[rightname..line]
-			end
-			if right and right:IsVisible() then
-				for index = 1, right:GetNumPoints() do
-					local point, relativeTo, relativePoint, xofs, yofs = right:GetPoint(index)
-					if xofs then
-						right:SetPoint(point, relativeTo, relativePoint, xofs + shift, yofs)
-					end
-				end
+			local left, right = lefts[line], rights[line]
+			if left and right then
+				right:ClearAllPoints()
+				right:SetPoint("RIGHT", left, "LEFT", xofs, 0) -- approximates the layout used by Blizzard, but for the new width
 			end
 		end
 	end
 
 	function class:MatchSize()
 		local p = self.parent
+		if not p then return end
 		local pw = p:GetWidth()
 		local w = self:GetWidth()
 		local d = pw - w
-		if d > .005 then
-			self.sizing = true
-			self:SetWidth(pw)
-			fixRight(self, d)
-		elseif d < -.005 then
+		-- if the difference is less than a pixel, we don't want to waste time fixing it
+		if d > .5 then
+			self:SetWidth(pw)	-- parent is wider, so we make child tip match
+			fixRight(self, pw)
+		elseif d < -.5 then
 			local reg = lib.tooltipRegistry[p]
 			if not reg.NoColumns then
-				self.sizing = true
-				p:SetWidth(w)
-				fixRight(p, -d)
+				p:SetWidth(w)	-- the parent is smaller than the child tip, make the parent wider
+				fixRight(p, w)	-- fix right aligned items in the game tooltip, not working currently as it shifts by the wrong amount
 			end
 		end
 	end
@@ -1565,6 +1599,7 @@ do -- ExtraTip "class" definition
 			-- calling it once (before OR after InitLines) doesn't always work {LTT-42}
 			show(self)
 		end
+		self:MatchSize()
 	end
 
 end
@@ -1572,6 +1607,26 @@ end
 -- More housekeeping upgrade stuff
 lib:SetEmbedMode(lib.embedMode)
 lib:Activate()
+
+
+--[[ Debugging Code -----------------------------------------------------
+
+local DebugLib = LibStub("DebugLib")
+local debug, assert, printQuick
+if DebugLib then
+	debug, assert, printQuick = DebugLib("LibExtraTip")
+else
+	function debug() end
+	assert = debug
+	printQuick = debug
+end
+
+-- when you just want to print a message and don't care about the rest
+function DebugPrintQuick(...)
+	printQuick(...)
+end
+
+-- Debugging Code ]]  -----------------------------------------------------
 
 
 --[[ Test Code -----------------------------------------------------
@@ -1600,7 +1655,7 @@ end)
 -- Test Code ]]-----------------------------------------------------
 
 --[[ Debugging code
-local f = {"AddDoubleLine", "AddFontStrings", "AddLine", "AddTexture", "AppendText", "ClearLines", "FadeOut", "GetAnchorType", "GetItem", "GetSpell", "GetOwner", "GetUnit", "IsUnit", "NumLines", "SetAction", "SetAuctionCompareItem", "SetAuctionItem", "SetAuctionSellItem", "SetBagItem", "SetBuybackItem", "SetCraftItem", "SetCraftSpell", "SetCurrencyToken", "SetGuildBankItem", "SetHyperlink", "SetInboxItem", "SetInventoryItem", "SetLootItem", "SetLootRollItem", "SetMerchantCompareItem", "SetMerchantItem", "SetMinimumWidth", "SetOwner", "SetPadding", "SetPetAction", "SetPlayerBuff", "SetQuestItem", "SetQuestLogItem", "SetQuestLogRewardSpell", "SetQuestRewardSpell", "SetSendMailItem", "SetShapeshift", "SetSpell", "SetTalent", "SetText", "SetTracking", "SetTradePlayerItem", "SetTradeSkillItem", "SetTradeTargetItem", "SetTrainerService", "SetUnit", "SetUnitAura", "SetUnitBuff", "SetUnitDebuff"}
+local f = {"AddDoubleLine", "AddFontStrings", "AddLine", "AddTexture", "AppendText", "ClearLines", "FadeOut", "GetAnchorType", "GetItem", "GetSpell", "GetOwner", "GetUnit", "IsUnit", "NumLines", "SetAction", "SetAuctionCompareItem", "SetAuctionItem", "SetAuctionSellItem", "SetBagItem", "SetBuybackItem", "SetCraftItem", "SetCraftSpell", "SetCurrencyToken", "SetGuildBankItem", "SetHyperlink", "SetInboxItem", "SetInventoryItem", "SetLootItem", "SetLootRollItem", "SetMerchantCompareItem", "SetMerchantItem", "SetMinimumWidth", "SetOwner", "SetPadding", "SetPetAction", "SetPlayerBuff", "SetQuestItem", "SetQuestLogItem", "SetQuestLogRewardSpell", "SetQuestRewardSpell", "SetSendMailItem", "SetShapeshift", "SetSpell", "SetTalent", "SetText", "SetTracking", "SetTradePlayerItem", "SetTradeTargetItem", "SetTrainerService", "SetUnit", "SetUnitAura", "SetUnitBuff", "SetUnitDebuff"}
 
 for _,k in ipairs(f) do
 	print("Hooking ", k)
