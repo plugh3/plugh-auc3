@@ -178,6 +178,33 @@ function lib.ProcessTooltip(tooltip, link, serverKey, quantity, decoded, additio
 	end
 end
 
+-- restore Sound_EnableSFX state after toggle
+--[[
+	usage (in-game macro):
+		/sfxtoggle off
+		/run SlashCmdList["UI_ERRORS_OFF"]();
+		[do stuff]
+		/run SlashCmdList["UI_ERRORS_ON"]();
+		/sfxtoggle restore
+--]]
+SLASH_AUCTIONEERMOD1 = '/sfxtoggle';
+lib.Processors.sfxState = '0';
+SlashCmdList['AUCTIONEERMOD'] = function (msg, editbox)
+	cvar = 'Sound_EnableSFX';
+	if (msg == 'off') then
+		--print('save ' .. GetCVar(cvar));
+		local state = GetCVar(cvar);
+		if (state == '1') then
+			SetCVar(cvar, '0');			
+		end
+		lib.Processors.sfxState = state;
+	elseif (msg == 'restore') then
+		--print('restore ' .. lib.Processors.sfxState);
+		SetCVar(cvar, lib.Processors.sfxState);
+	end
+end
+
+
 function lib.OnLoad()
 	--Default sizes for the scrollframe column widths
 	default("util.simpleauc.columnwidth.Seller", 89)
@@ -200,6 +227,7 @@ function lib.OnLoad()
 	default("util.simpleauc.auto.match", true)
 	default("util.simpleauc.auto.undercut", true)
 	default("util.simpleauc.undercut", "percent")
+	default("util.simpleauc.undercut.round", 10000)
 	default("util.simpleauc.undercut.fixed", 1)
 	default("util.simpleauc.undercut.percent", 2.5)
 	default("util.simpleauc.displayauctiontab", true)
@@ -255,7 +283,7 @@ function private.SetupConfigGui(gui)
 	gui:AddControl(id, "Checkbox",     0, 2, "util.simpleauc.clickhook.doubleclick", "Allow double-alt-clicking to auto-post the item")
 	gui:AddTip(id, "If you alt-click twice in succession, the item will be posted automatically at the current price")
 
-	gui:AddControl(id, "Subhead",      0,    "Defaults")
+	-- PLG: added options for rounding 
 	gui:AddControl(id, "Checkbox",     0, 1, "util.simpleauc.auto.match", "Automatically match your current price if not remembering item price")
 	gui:AddTip(id, "When items are posted, if there is no remembered price, and you currently have auctioning items, your current price will be matched")
 	gui:AddControl(id, "Checkbox",     0, 1, "util.simpleauc.auto.undercut", "Automatically undercut the current price if not matching or remembering")
@@ -263,10 +291,14 @@ function private.SetupConfigGui(gui)
 	gui:AddControl(id, "Label",        0, 1, nil, "Automatically set the duration for an item unless remembering:")
 	gui:AddControl(id, "Selectbox",    0, 2, {{12, "12 hour"}, {24, "24 hour"}, {48, "48 hour"}}, "util.simpleauc.auto.duration")
 	gui:AddTip(id, "When items are posted, if there is no remembered price, the duration will default to this value")
+	gui:AddControl(id, "Label",        0, 1, nil, "Rounding amount:")
+	gui:AddControl(id, "MoneyFramePinned", 0, 2, "util.simpleauc.undercut.round", 0, AucAdvanced.Const.MAXBIDPRICE)
 
-	gui:AddControl(id, "Subhead",      0,    "Defaults")
+	-- PLG: added undercut options (3) "Lesser of" and (4) "Greater of"
+	gui:AddControl(id, "Subhead",      0,    "Undercut")
+	--gui:AddControl(id, "TinyNumber", 0, 1, "util.simpleauc.undercut.round", 1, 100, "Rounding amount:")
 	gui:AddControl(id, "Label",        0, 1, nil, "Undercut basis:")
-	gui:AddControl(id, "Selectbox",    0, 2, {{"fixed", "Fixed value"}, {"percent", "Percentage"}}, "util.simpleauc.undercut")
+	gui:AddControl(id, "Selectbox",    0, 2, {{"lesser", "Lesser of..."}, {"greater", "Greater of..."}, {"fixed", "Fixed value"}, {"percent", "Percentage"}}, "util.simpleauc.undercut")
 	gui:AddTip(id, "When the auction is to be undercut, specify how you want the lowest price to be undercut")
 	gui:AddControl(id, "Label",        0, 1, nil, "Fixed undercut value amount:")
 	gui:AddControl(id, "MoneyFramePinned", 0, 2, "util.simpleauc.undercut.fixed", 0, AucAdvanced.Const.MAXBIDPRICE)

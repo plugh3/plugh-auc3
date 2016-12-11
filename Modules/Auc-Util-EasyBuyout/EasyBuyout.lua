@@ -216,6 +216,35 @@ function private.BrowseButton_OnClick(...)
         else
         	if(arg1 == "RightButton") then -- only warn of modifier key if the right mouse button is set
 				private.EBMessage("|cffff5511EasyBuyout - Modifier Key " .. private.EBConvertModifierToText(selection) .. " is set, but not pressed!");
+
+				-- PLG: on Right-Click of Browse tab listing -> switch to Auctions tab
+				_G["AuctionFrameTab3"]:Click()
+
+				
+				--EXAMPLE: extract info about clicked listing (e.g. seller name)
+
+				--local button = self
+				--local id
+				--if CompactUImode then
+				--	id = button.id
+				--else
+				--	id = button:GetID() + FauxScrollFrame_GetOffset(BrowseScrollFrame)
+				--end
+				--local link = GetAuctionItemLink("list", id)
+				--if link then
+					--PLG: copy seller's name to item textfield
+					--local seller = select(14, GetAuctionItemInfo("list", id))
+					--local sellerFull = select(15, GetAuctionItemInfo("list", id))
+					--local name = sellerFull or seller
+					--local msg = "Copying seller name "..name.." to \"Name\" textbox"
+					--if not sellerFull then msg = msg.." (no full name -- other realm)" end
+					--private.EBMessage(msg)
+					--BrowseName:SetText(name)
+					--if seller then private.EBMessage("|cffCC1100seller: "..seller) end
+					--if sellerFull then private.EBMessage("|cffCC1100sellerFull: "..sellerFull)
+					--else private.EBMessage("|cffCC1100sellerFull: no full name! (other realm)") end
+				--end
+				
 			end
 
             return orig_AB_OC(...)
@@ -239,6 +268,8 @@ function private.BrowseButton_OnClick(...)
             private.EBMessage("Rightclick - not finding anything to buy. If you are mass clicking - try going from the bottom up!")
             return
         end
+		
+		-- buy listing
         SetSelectedAuctionItem("list", id);
 		private.EasyBuyoutAuction();
     else
@@ -272,7 +303,6 @@ end
 function private.EasyBuyoutAuction()
     local EasyBuyoutIndex = GetSelectedAuctionItem("list");
     local EasyBuyoutPrice = select(10, GetAuctionItemInfo("list", EasyBuyoutIndex))
-
 	-- Easy Gold Limit for EasyBuyout
 	if get("util.EasyBuyout.EGL.EBuy.active") then
 		if EasyBuyoutPrice > get("util.EasyBuyout.EGL.EBuy.limit") then
@@ -316,6 +346,19 @@ local function NewOnClick(self, button) -- used for EasyCancel
 	else
 		if active and button == "RightButton" then
 			private.EBMessage("|cffff5511EasyCancel - Modifier Key " .. private.EBConvertModifierToText(modselect) .. " is set, but not pressed!");
+
+			--PLG: jump to Browse tab and search
+			local link = GetAuctionItemLink("owner", self:GetID() + FauxScrollFrame_GetOffset(AuctionsScrollFrame))
+			if link then
+				local itemName = GetAuctionItemInfo("owner", self:GetID() + FauxScrollFrame_GetOffset(AuctionsScrollFrame))
+				private.EBMessage("Scanning \""..itemName.."\"")
+				AuctionFrameBrowse_Reset(BrowseResetButton)
+				AuctionFrameBrowse.page = 0
+				BrowseName:SetText(itemName)
+				_G["AuctionFrameTab1"]:Click()
+				AuctionFrameBrowse_Search()
+			end
+
 		end
 		OrigAuctionOnClick(self, button)
 	end

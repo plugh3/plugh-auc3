@@ -68,6 +68,9 @@ lib.Processors = {
 		end
 		-- restore position on every open, in case UIParent (or another AddOn) has moved it since
 		private.RestorePosition()
+		-- open to Post tab
+		-- TODO: make a user setting for "Default Tab"
+		_G["AuctionFrameTab6"]:Click()
 	end,
 
 	configchanged = function(callbackType, fullsetting, value, settingname, settinggroup, settingbase)
