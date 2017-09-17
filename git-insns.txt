@@ -1,0 +1,20 @@
+--option 1--
+git init
+git checkout -b vanilla
+git add .
+git remote add origin https://github.com/plugh3/wow-auctioneer.git
+git fetch origin
+git reset 2a8ace8bd4d30c00701e8db1ef6254ef2f7dcdcc
+
+--option 2--
+checkout vanilla
+-copy .git dir out
+-overwrite
+-copy .git dir in
+git add .
+
+
+git commit -m "x.yz vanilla"
+git push origin vanilla
+git checkout mod
+git merge vanilla
